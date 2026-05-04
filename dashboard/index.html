@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SharePoint Oracle Bridge</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:       #0a0c0a;
+  --surface:  #0f120f;
+  --surface2: #141814;
+  --surface3: #1a1f1a;
+  --border:   #1e261e;
+  --border2:  #283028;
+  --text:     #d4e8d4;
+  --muted:    #5a7a5a;
+  --hint:     #3a4e3a;
+  --green:    #22c55e;
+  --green2:   #16a34a;
+  --green3:   #4ade80;
+  --amber:    #f59e0b;
+  --red:      #ef4444;
+  --blue:     #3b82f6;
+  --ms:       #0078d4;
+  --oracle:   #c74634;
+  --font:     'IBM Plex Mono', monospace;
+  --sans:     'IBM Plex Sans', sans-serif;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:var(--bg); color:var(--text); font-family:var(--font); font-size:13px; min-height:100vh; }
+
+/* Scanline overlay */
+body::before { content:''; position:fixed; inset:0; background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.03) 2px,rgba(0,0,0,0.03) 4px); pointer-events:none; z-index:1000; }
+
+/* Layout */
+.shell { display:grid; grid-template-rows:48px 1fr; min-height:100vh; }
+
+/* Top bar */
+.topbar {
+  background:var(--surface); border-bottom:1px solid var(--border2);
+  display:flex; align-items:center; padding:0 24px; gap:24px;
+  position:sticky; top:0; z-index:100;
+}
+.logo { font-size:13px; font-weight:600; color:var(--green3); letter-spacing:1px; display:flex; align-items:center; gap:8px; }
+.logo-dot { width:8px; height:8px; background:var(--green); border-radius:50%; animation:pulse 2s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+.topbar-mid { flex:1; display:flex; gap:16px; }
+.tb-stat { font-size:11px; color:var(--muted); }
+.tb-stat span { color:var(--green3); font-weight:500; }
+.tb-right { display:flex; gap:8px; margin-left:auto; }
+.tb-btn { font-family:var(--font); font-size:11px; padding:5px 14px; border:1px solid var(--border2); background:var(--surface2); color:var(--muted); cursor:pointer; transition:all 0.12s; letter-spacing:0.5px; }
+.tb-btn:hover { border-color:var(--green); color:var(--green3); }
+.tb-btn.primary { background:var(--green2); border-color:var(--green); color:#fff; }
+.tb-btn.primary:hover { background:var(--green); }
+
+/* Main grid */
+.main { display:grid; grid-template-columns:240px 1fr; overflow:hidden; height:calc(100vh - 48px); }
+
+/* Sidebar */
+.sidebar { background:var(--surface); border-right:1px solid var(--border); overflow-y:auto; }
+.sb-section { padding:12px 0 4px; }
+.sb-label { padding:6px 16px 4px; font-size:9px; color:var(--hint); letter-spacing:2px; text-transform:uppercase; }
+.nav-item { display:flex; align-items:center; gap:8px; padding:7px 16px; font-size:12px; color:var(--muted); cursor:pointer; border-left:2px solid transparent; transition:all 0.1s; }
+.nav-item:hover { color:var(--text); background:var(--surface2); }
+.nav-item.active { color:var(--green3); border-left-color:var(--green); background:rgba(34,197,94,0.06); }
+.nav-icon { font-size:10px; width:14px; text-align:center; }
+
+.site-item { padding:6px 16px; font-size:11px; color:var(--muted); cursor:pointer; display:flex; align-items:center; justify-content:space-between; transition:background 0.1s; }
+.site-item:hover { background:var(--surface2); color:var(--text); }
+.site-chip { font-size:9px; padding:1px 6px; background:rgba(34,197,94,0.1); color:var(--green); border:1px solid rgba(34,197,94,0.2); }
+
+/* Content */
+.content { overflow-y:auto; padding:20px 24px; }
+
+/* Page header */
+.page-hdr { display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; }
+.page-title { font-size:14px; font-weight:600; color:var(--green3); letter-spacing:0.5px; }
+.page-sub { font-size:11px; color:var(--muted); margin-top:2px; }
+
+/* Stat cards */
+.stats-row { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin-bottom:20px; }
+.stat-card { background:var(--surface); border:1px solid var(--border); padding:14px 16px; position:relative; overflow:hidden; }
+.stat-card::after { content:''; position:absolute; bottom:0; left:0; right:0; height:1px; }
+.stat-card.g::after { background:var(--green); }
+.stat-card.b::after { background:var(--blue); }
+.stat-card.o::after { background:var(--oracle); }
+.stat-card.a::after { background:var(--amber); }
+.stat-card.m::after { background:var(--ms); }
+.stat-lbl { font-size:9px; color:var(--muted); letter-spacing:1.5px; text-transform:uppercase; margin-bottom:8px; }
+.stat-val { font-size:28px; font-weight:600; line-height:1; }
+.stat-val.g { color:var(--green3); }
+.stat-val.b { color:var(--blue); }
+.stat-val.o { color:var(--oracle); }
+.stat-val.a { color:var(--amber); }
+.stat-val.m { color:var(--ms); }
+.stat-sub { font-size:10px; color:var(--muted); margin-top:4px; }
+
+/* Cards */
+.card { background:var(--surface); border:1px solid var(--border); margin-bottom:16px; }
+.card-hdr { padding:10px 16px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
+.card-title { font-size:11px; font-weight:500; color:var(--green); letter-spacing:1px; text-transform:uppercase; }
+.card-body { padding:14px 16px; }
+.grid2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+.grid3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; }
+
+/* Table */
+.tbl { width:100%; border-collapse:collapse; font-size:11px; }
+.tbl th { padding:7px 10px; text-align:left; font-size:9px; color:var(--hint); text-transform:uppercase; letter-spacing:1px; border-bottom:1px solid var(--border2); background:var(--surface2); font-weight:500; }
+.tbl td { padding:7px 10px; border-bottom:1px solid var(--border); color:var(--text); }
+.tbl tr:last-child td { border-bottom:none; }
+.tbl tr:hover td { background:var(--surface2); }
+
+/* Status badges */
+.badge { display:inline-block; font-size:9px; padding:2px 8px; letter-spacing:0.5px; font-weight:500; }
+.badge-ok  { background:rgba(34,197,94,0.1);  color:var(--green);  border:1px solid rgba(34,197,94,0.2); }
+.badge-warn{ background:rgba(245,158,11,0.1); color:var(--amber);  border:1px solid rgba(245,158,11,0.2); }
+.badge-err { background:rgba(239,68,68,0.1);  color:var(--red);    border:1px solid rgba(239,68,68,0.2); }
+.badge-ms  { background:rgba(0,120,212,0.1);  color:var(--ms);     border:1px solid rgba(0,120,212,0.2); }
+.badge-ora { background:rgba(199,70,52,0.1);  color:var(--oracle); border:1px solid rgba(199,70,52,0.2); }
+.badge-pend{ background:rgba(163,230,53,0.08);color:#a3e635;       border:1px solid rgba(163,230,53,0.2); }
+
+/* Bars */
+.bar-row { display:flex; align-items:center; gap:8px; margin-bottom:7px; font-size:11px; }
+.bar-lbl { width:150px; flex-shrink:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--muted); }
+.bar-track { flex:1; height:6px; background:var(--surface3); border:1px solid var(--border); }
+.bar-fill { height:100%; }
+.bar-val { width:44px; text-align:right; flex-shrink:0; color:var(--muted); }
+
+/* Direction flow */
+.flow { display:flex; align-items:center; gap:8px; font-size:11px; padding:10px 0; border-bottom:1px solid var(--border); }
+.flow:last-child { border-bottom:none; }
+.flow-dir { padding:2px 8px; font-size:9px; letter-spacing:1px; font-weight:600; }
+.flow-sp  { background:rgba(0,120,212,0.15); color:var(--ms);     border:1px solid rgba(0,120,212,0.3); }
+.flow-ora { background:rgba(199,70,52,0.15); color:var(--oracle); border:1px solid rgba(199,70,52,0.3); }
+.flow-arrow { color:var(--green); font-size:14px; }
+.flow-meta { color:var(--muted); flex:1; }
+.flow-count { color:var(--green3); font-weight:500; }
+
+/* Search */
+.search-wrap { display:flex; gap:8px; margin-bottom:14px; }
+.search-input { flex:1; background:var(--surface2); border:1px solid var(--border2); color:var(--text); font-family:var(--font); font-size:12px; padding:8px 12px; outline:none; transition:border-color 0.12s; }
+.search-input:focus { border-color:var(--green); }
+.search-input::placeholder { color:var(--hint); }
+.search-btn { font-family:var(--font); font-size:11px; padding:8px 16px; background:var(--green2); border:1px solid var(--green); color:#fff; cursor:pointer; }
+
+/* Webhook tag */
+.wh-item { display:flex; align-items:center; gap:8px; padding:8px 0; border-bottom:1px solid var(--border); font-size:11px; }
+.wh-item:last-child { border-bottom:none; }
+.wh-id { font-family:var(--font); color:var(--green); }
+.wh-res { color:var(--muted); flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.wh-exp { color:var(--hint); flex-shrink:0; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width:3px; }
+::-webkit-scrollbar-track { background:transparent; }
+::-webkit-scrollbar-thumb { background:var(--border2); }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- Top bar -->
+  <div class="topbar">
+    <div class="logo">
+      <div class="logo-dot"></div>
+      SPX_BRIDGE
+    </div>
+    <div class="topbar-mid">
+      <div class="tb-stat">SITES <span id="tb-sites">4</span></div>
+      <div class="tb-stat">LISTS <span id="tb-lists">11</span></div>
+      <div class="tb-stat">ITEMS <span id="tb-items">247</span></div>
+      <div class="tb-stat">DOCS <span id="tb-docs">15</span></div>
+      <div class="tb-stat">PENDING <span id="tb-pending" style="color:var(--amber)">0</span></div>
+    </div>
+    <div class="tb-right">
+      <button class="tb-btn" onclick="showPage('sync')">↻ Delta sync</button>
+      <button class="tb-btn primary" onclick="doPush()">↑ Push to SP</button>
+    </div>
+  </div>
+
+  <div class="main">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sb-section">
+        <div class="sb-label">Views</div>
+        <div class="nav-item active" onclick="showPage('overview')"><span class="nav-icon">▪</span>Overview</div>
+        <div class="nav-item" onclick="showPage('sync')"><span class="nav-icon">↻</span>Sync control</div>
+        <div class="nav-item" onclick="showPage('items')"><span class="nav-icon">≡</span>Item browser</div>
+        <div class="nav-item" onclick="showPage('documents')"><span class="nav-icon">▤</span>Documents</div>
+        <div class="nav-item" onclick="showPage('log')"><span class="nav-icon">◈</span>Sync log</div>
+      </div>
+      <div class="sb-section">
+        <div class="sb-label">Sites</div>
+        <div id="site-list"></div>
+      </div>
+      <div class="sb-section">
+        <div class="sb-label">Oracle tables</div>
+        <div class="site-item">SPX_SITES <span class="site-chip" id="cnt-sites">4</span></div>
+        <div class="site-item">SPX_LISTS <span class="site-chip" id="cnt-lists">11</span></div>
+        <div class="site-item">SPX_ITEMS <span class="site-chip" id="cnt-items">247</span></div>
+        <div class="site-item">SPX_DOCUMENTS <span class="site-chip" id="cnt-docs">15</span></div>
+        <div class="site-item">SPX_SYNC_LOG <span class="site-chip" id="cnt-log">14</span></div>
+      </div>
+    </aside>
+
+    <!-- Content -->
+    <div class="content" id="content">
+
+      <!-- Overview page -->
+      <div id="page-overview" class="page active">
+        <div class="page-hdr">
+          <div><div class="page-title">// overview</div><div class="page-sub">SharePoint ↔ Oracle bidirectional bridge — acme-corp</div></div>
+        </div>
+        <div class="stats-row">
+          <div class="stat-card g"><div class="stat-lbl">SP items synced</div><div class="stat-val g">247</div><div class="stat-sub">across 11 lists</div></div>
+          <div class="stat-card b"><div class="stat-lbl">Documents</div><div class="stat-val b">15</div><div class="stat-sub">text extracted</div></div>
+          <div class="stat-card a"><div class="stat-lbl">Push pending</div><div class="stat-val a" id="ov-pending">0</div><div class="stat-sub">Oracle → SP queue</div></div>
+          <div class="stat-card m"><div class="stat-lbl">Delta tokens</div><div class="stat-val m">11</div><div class="stat-sub">active per list</div></div>
+          <div class="stat-card o"><div class="stat-lbl">Sync runs</div><div class="stat-val o" id="ov-runs">14</div><div class="stat-sub">total operations</div></div>
+        </div>
+
+        <div class="grid2">
+          <div class="card">
+            <div class="card-hdr"><span class="card-title">Sync directions</span></div>
+            <div class="card-body" id="flow-list"></div>
+          </div>
+          <div class="card">
+            <div class="card-hdr"><span class="card-title">Items by list</span></div>
+            <div class="card-body" id="list-bars"></div>
+          </div>
+        </div>
+
+        <div class="grid2">
+          <div class="card">
+            <div class="card-hdr"><span class="card-title">Recent sync log</span></div>
+            <div class="card-body" style="padding:0">
+              <table class="tbl" id="ov-log-table">
+                <thead><tr><th>Operation</th><th>Resource</th><th>Created</th><th>Updated</th><th>Dir</th><th>ms</th></tr></thead>
+                <tbody id="ov-log-body"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-hdr"><span class="card-title">Sites & storage</span></div>
+            <div class="card-body" id="sites-storage"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sync control page -->
+      <div id="page-sync" class="page" style="display:none">
+        <div class="page-hdr"><div><div class="page-title">// sync control</div><div class="page-sub">Trigger and monitor sync operations</div></div></div>
+
+        <div class="grid3" style="margin-bottom:16px">
+          <div class="card" style="cursor:pointer" onclick="doSync('site-001',false)">
+            <div class="card-body">
+              <div style="color:var(--green);font-size:11px;letter-spacing:1px;margin-bottom:6px">DELTA SYNC</div>
+              <div style="font-size:11px;color:var(--muted)">Fetch only changed items via delta token. Fast + bandwidth-efficient.</div>
+              <div style="margin-top:10px;color:var(--green3);font-size:10px">→ POST /sync/sp-to-oracle</div>
+            </div>
+          </div>
+          <div class="card" style="cursor:pointer" onclick="doSync('site-001',true)">
+            <div class="card-body">
+              <div style="color:var(--amber);font-size:11px;letter-spacing:1px;margin-bottom:6px">FULL SYNC</div>
+              <div style="font-size:11px;color:var(--muted)">Fetch everything — resets delta tokens. Use after schema changes.</div>
+              <div style="margin-top:10px;color:var(--amber);font-size:10px">→ POST /sync/sp-to-oracle?full=true</div>
+            </div>
+          </div>
+          <div class="card" style="cursor:pointer" onclick="doPush()">
+            <div class="card-body">
+              <div style="color:var(--ms);font-size:11px;letter-spacing:1px;margin-bottom:6px">PUSH TO SP</div>
+              <div style="font-size:11px;color:var(--muted)">Push PUSH_PENDING=1 Oracle items back to SharePoint. Bidirectional.</div>
+              <div style="margin-top:10px;color:var(--ms);font-size:10px">→ POST /sync/oracle-to-sp</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-hdr"><span class="card-title">Sync log — all operations</span></div>
+          <div style="padding:0">
+            <table class="tbl">
+              <thead><tr><th>#</th><th>Operation</th><th>Resource</th><th>Found</th><th>Created</th><th>Updated</th><th>Deleted</th><th>Failed</th><th>Direction</th><th>ms</th></tr></thead>
+              <tbody id="sync-log-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-hdr"><span class="card-title">Webhook subscriptions</span></div>
+          <div class="card-body" id="webhook-list"></div>
+        </div>
+      </div>
+
+      <!-- Item browser page -->
+      <div id="page-items" class="page" style="display:none">
+        <div class="page-hdr"><div><div class="page-title">// item browser</div><div class="page-sub">Browse all SPX_ITEMS from SharePoint lists</div></div></div>
+        <div class="search-wrap">
+          <input class="search-input" id="item-search" placeholder="Filter by title, status, priority..." oninput="filterItems()">
+          <select class="search-input" id="item-status" style="max-width:160px" onchange="filterItems()">
+            <option value="">All statuses</option>
+            <option>Approved</option><option>InProgress</option><option>Pending</option><option>Complete</option>
+          </select>
+        </div>
+        <div class="card">
+          <div class="card-hdr">
+            <span class="card-title">Items</span>
+            <span style="font-size:10px;color:var(--muted)" id="item-count">247 items</span>
+          </div>
+          <div style="padding:0">
+            <table class="tbl">
+              <thead><tr><th>Item ID</th><th>List</th><th>Title</th><th>Status</th><th>Priority</th><th>Assigned</th><th>Push pending</th></tr></thead>
+              <tbody id="item-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Documents page -->
+      <div id="page-documents" class="page" style="display:none">
+        <div class="page-hdr"><div><div class="page-title">// documents</div><div class="page-sub">Document libraries — extracted text stored in Oracle CLOB</div></div></div>
+        <div class="search-wrap">
+          <input class="search-input" id="doc-search" placeholder="Full-text search across extracted document text..." oninput="filterDocs()">
+        </div>
+        <div class="card">
+          <div class="card-hdr">
+            <span class="card-title">Documents</span>
+            <span style="font-size:10px;color:var(--muted)" id="doc-count">15 documents</span>
+          </div>
+          <div style="padding:0">
+            <table class="tbl">
+              <thead><tr><th>File name</th><th>Type</th><th>Size</th><th>Pages</th><th>Extracted text preview</th><th>Author</th></tr></thead>
+              <tbody id="doc-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sync log page -->
+      <div id="page-log" class="page" style="display:none">
+        <div class="page-hdr"><div><div class="page-title">// sync audit log</div><div class="page-sub">SPX_SYNC_LOG — every operation recorded</div></div></div>
+        <div class="stats-row" style="grid-template-columns:repeat(4,1fr)">
+          <div class="stat-card g"><div class="stat-lbl">SP → Oracle</div><div class="stat-val g" id="log-sp-count">12</div><div class="stat-sub">inbound syncs</div></div>
+          <div class="stat-card m"><div class="stat-lbl">Oracle → SP</div><div class="stat-val m" id="log-ora-count">2</div><div class="stat-sub">outbound pushes</div></div>
+          <div class="stat-card a"><div class="stat-lbl">Total items moved</div><div class="stat-val a" id="log-total">291</div><div class="stat-sub">created + updated</div></div>
+          <div class="stat-card o"><div class="stat-lbl">Failures</div><div class="stat-val o" id="log-failed">0</div><div class="stat-sub">across all runs</div></div>
+        </div>
+        <div class="card">
+          <div class="card-hdr"><span class="card-title">Full audit trail</span></div>
+          <div style="padding:0">
+            <table class="tbl">
+              <thead><tr><th>#</th><th>Timestamp</th><th>Operation</th><th>Resource</th><th>Created</th><th>Updated</th><th>Deleted</th><th>Failed</th><th>Token</th><th>Direction</th></tr></thead>
+              <tbody id="full-log-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+const API = 'http://localhost:8000';
+
+// ── Mock data ─────────────────────────────────────────────────
+const SITES = [
+  {SITE_ID:'site-001',DISPLAY_NAME:'Acme Corp Intranet', OWNER_EMAIL:'admin@acme.com',STORAGE_USED:734003200},
+  {SITE_ID:'site-002',DISPLAY_NAME:'HR Portal',          OWNER_EMAIL:'hr@acme.com',   STORAGE_USED:1258291200},
+  {SITE_ID:'site-003',DISPLAY_NAME:'Engineering Hub',    OWNER_EMAIL:'cto@acme.com',  STORAGE_USED:644245504},
+  {SITE_ID:'site-004',DISPLAY_NAME:'Finance Workspace',  OWNER_EMAIL:'cfo@acme.com',  STORAGE_USED:751619276},
+];
+
+const LISTS = [
+  {LIST_ID:'list-001',SITE_ID:'site-001',DISPLAY_NAME:'Company Announcements', ITEM_COUNT:20,LIST_TYPE:'genericList'},
+  {LIST_ID:'list-002',SITE_ID:'site-001',DISPLAY_NAME:'Policy Documents',       ITEM_COUNT:23,LIST_TYPE:'documentLibrary'},
+  {LIST_ID:'list-003',SITE_ID:'site-001',DISPLAY_NAME:'IT Help Desk Tickets',   ITEM_COUNT:20,LIST_TYPE:'genericList'},
+  {LIST_ID:'list-004',SITE_ID:'site-002',DISPLAY_NAME:'Employee Directory',     ITEM_COUNT:20,LIST_TYPE:'genericList'},
+  {LIST_ID:'list-005',SITE_ID:'site-002',DISPLAY_NAME:'Job Postings',           ITEM_COUNT:12,LIST_TYPE:'genericList'},
+  {LIST_ID:'list-006',SITE_ID:'site-002',DISPLAY_NAME:'HR Policies Library',    ITEM_COUNT:34,LIST_TYPE:'documentLibrary'},
+  {LIST_ID:'list-007',SITE_ID:'site-003',DISPLAY_NAME:'Sprint Backlog',         ITEM_COUNT:20,LIST_TYPE:'genericList'},
+  {LIST_ID:'list-008',SITE_ID:'site-003',DISPLAY_NAME:'Architecture Docs',      ITEM_COUNT:20,LIST_TYPE:'documentLibrary'},
+  {LIST_ID:'list-009',SITE_ID:'site-003',DISPLAY_NAME:'Incident Register',      ITEM_COUNT:20,LIST_TYPE:'genericList'},
+  {LIST_ID:'list-010',SITE_ID:'site-004',DISPLAY_NAME:'Budget Tracker',         ITEM_COUNT:20,LIST_TYPE:'genericList'},
+  {LIST_ID:'list-011',SITE_ID:'site-004',DISPLAY_NAME:'Vendor Contracts',       ITEM_COUNT:18,LIST_TYPE:'documentLibrary'},
+];
+
+const STATUSES   = ['Approved','InProgress','Pending','Complete','Draft'];
+const PRIORITIES = ['Critical','High','Medium','Low'];
+const USERS      = ['alice@acme.com','bob@acme.com','carol@acme.com','dave@acme.com','emma@acme.com'];
+
+function seededRand(seed) {
+  let s = seed;
+  return () => { s = (s * 1664525 + 1013904223) & 0xffffffff; return (s >>> 0) / 0xffffffff; };
+}
+
+const ITEMS = [];
+LISTS.filter(l=>l.LIST_TYPE==='genericList').forEach(l => {
+  const rng = seededRand(l.LIST_ID.charCodeAt(5));
+  for(let i=0;i<l.ITEM_COUNT;i++){
+    ITEMS.push({
+      ITEM_ID:`item-${l.LIST_ID}-${String(i+1).padStart(4,'0')}`,
+      LIST_ID:l.LIST_ID,LIST_NAME:l.DISPLAY_NAME,SITE_ID:l.SITE_ID,
+      TITLE:`${l.DISPLAY_NAME} item ${i+1}`,
+      STATUS:STATUSES[Math.floor(rng()*STATUSES.length)],
+      PRIORITY:PRIORITIES[Math.floor(rng()*PRIORITIES.length)],
+      ASSIGNED_TO:USERS[Math.floor(rng()*USERS.length)],
+      PUSH_PENDING:0,
+    });
+  }
+});
+
+const DOCS = [
+  {DOC_ID:'doc-001',LIST_ID:'list-002',FILE_NAME:'Q3 Financial Report.pdf',      FILE_TYPE:'pdf', FILE_SIZE:245760, PAGE_COUNT:12, SP_CREATED_BY:'cfo@acme.com',   EXTRACTED_TEXT:'Total revenue Q3 2024: $4.2M. Operating expenses: $2.8M. EBITDA: $1.4M.'},
+  {DOC_ID:'doc-002',LIST_ID:'list-006',FILE_NAME:'Employee Handbook 2024.docx',  FILE_TYPE:'docx',FILE_SIZE:184320, PAGE_COUNT:48, SP_CREATED_BY:'hr@acme.com',    EXTRACTED_TEXT:'Welcome to Acme Corp. This handbook outlines our policies on leave, conduct, and benefits.'},
+  {DOC_ID:'doc-003',LIST_ID:'list-008',FILE_NAME:'Architecture Decision.docx',   FILE_TYPE:'docx',FILE_SIZE:92160,  PAGE_COUNT:8,  SP_CREATED_BY:'cto@acme.com',   EXTRACTED_TEXT:'ADR-042: Adopt Oracle as primary transactional database. Payroll engine requires ACID compliance.'},
+  {DOC_ID:'doc-004',LIST_ID:'list-002',FILE_NAME:'Security Policy v2.pdf',       FILE_TYPE:'pdf', FILE_SIZE:163840, PAGE_COUNT:22, SP_CREATED_BY:'sec@acme.com',   EXTRACTED_TEXT:'All systems must use MFA. Passwords minimum 12 characters. Annual penetration testing required.'},
+  {DOC_ID:'doc-005',LIST_ID:'list-011',FILE_NAME:'Vendor Contract Template.docx',FILE_TYPE:'docx',FILE_SIZE:71680,  PAGE_COUNT:6,  SP_CREATED_BY:'legal@acme.com', EXTRACTED_TEXT:'Agreement between Acme Corp and Vendor. Payment terms: Net 30. Liability cap: $500,000.'},
+  {DOC_ID:'doc-006',LIST_ID:'list-006',FILE_NAME:'Leave Policy 2024.pdf',        FILE_TYPE:'pdf', FILE_SIZE:98304,  PAGE_COUNT:5,  SP_CREATED_BY:'hr@acme.com',    EXTRACTED_TEXT:'Annual leave: 15 days. Sick leave: 10 days. Maternity/paternity: 16 weeks.'},
+  {DOC_ID:'doc-007',LIST_ID:'list-008',FILE_NAME:'API Standards Guide.docx',     FILE_TYPE:'docx',FILE_SIZE:131072, PAGE_COUNT:31, SP_CREATED_BY:'cto@acme.com',   EXTRACTED_TEXT:'All APIs must use REST. JSON responses. OAuth2 authentication. Rate limiting: 1000 req/min.'},
+  {DOC_ID:'doc-008',LIST_ID:'list-011',FILE_NAME:'Procurement Policy.pdf',       FILE_TYPE:'pdf', FILE_SIZE:204800, PAGE_COUNT:18, SP_CREATED_BY:'cfo@acme.com',   EXTRACTED_TEXT:'Purchases under $5,000 require one approval. Over $50,000 require board sign-off.'},
+  {DOC_ID:'doc-009',LIST_ID:'list-002',FILE_NAME:'BCP Document 2024.docx',       FILE_TYPE:'docx',FILE_SIZE:116736, PAGE_COUNT:14, SP_CREATED_BY:'ops@acme.com',   EXTRACTED_TEXT:'Business Continuity Plan. RTO: 4 hours. RPO: 1 hour. Primary failover: Azure West US 2.'},
+  {DOC_ID:'doc-010',LIST_ID:'list-008',FILE_NAME:'DB Migration Runbook.pdf',     FILE_TYPE:'pdf', FILE_SIZE:77824,  PAGE_COUNT:9,  SP_CREATED_BY:'dba@acme.com',   EXTRACTED_TEXT:'Oracle 19c to 21c migration. Estimated downtime: 2 hours. Rollback procedure documented in section 4.'},
+];
+
+const SYNC_LOG = [
+  {LOG_ID:14,OPERATION:'oracle_to_sp_push',  RESOURCE_ID:'all',      ITEMS_FOUND:3,ITEMS_CREATED:3,ITEMS_UPDATED:0,ITEMS_DELETED:0,ITEMS_FAILED:0,DIRECTION:'ORACLE_TO_SP',  DURATION_MS:2,  DELTA_TOKEN:null,          STARTED_AT:'2026-05-04T03:16:29'},
+  {LOG_ID:13,OPERATION:'full_sync',           RESOURCE_ID:'list-009', ITEMS_FOUND:20,ITEMS_CREATED:20,ITEMS_UPDATED:0,ITEMS_DELETED:0,ITEMS_FAILED:0,DIRECTION:'SP_TO_ORACLE',DURATION_MS:2,  DELTA_TOKEN:'feeb7d24...', STARTED_AT:'2026-05-04T03:16:27'},
+  {LOG_ID:12,OPERATION:'full_sync',           RESOURCE_ID:'list-008', ITEMS_FOUND:23,ITEMS_CREATED:23,ITEMS_UPDATED:0,ITEMS_DELETED:0,ITEMS_FAILED:0,DIRECTION:'SP_TO_ORACLE',DURATION_MS:1,  DELTA_TOKEN:'a8b2c411...', STARTED_AT:'2026-05-04T03:16:27'},
+  {LOG_ID:11,OPERATION:'full_sync',           RESOURCE_ID:'list-007', ITEMS_FOUND:20,ITEMS_CREATED:20,ITEMS_UPDATED:0,ITEMS_DELETED:0,ITEMS_FAILED:0,DIRECTION:'SP_TO_ORACLE',DURATION_MS:1,  DELTA_TOKEN:'9d3e1f22...', STARTED_AT:'2026-05-04T03:16:27'},
+  {LOG_ID:10,OPERATION:'full_sync',           RESOURCE_ID:'list-006', ITEMS_FOUND:18,ITEMS_CREATED:18,ITEMS_UPDATED:0,ITEMS_DELETED:0,ITEMS_FAILED:0,DIRECTION:'SP_TO_ORACLE',DURATION_MS:1,  DELTA_TOKEN:'c217ef5b...', STARTED_AT:'2026-05-04T03:16:27'},
+  {LOG_ID:9, OPERATION:'full_sync',           RESOURCE_ID:'list-005', ITEMS_FOUND:12,ITEMS_CREATED:12,ITEMS_UPDATED:0,ITEMS_DELETED:0,ITEMS_FAILED:0,DIRECTION:'SP_TO_ORACLE',DURATION_MS:0,  DELTA_TOKEN:'b7f9012c...', STARTED_AT:'2026-05-04T03:16:27'},
+  {LOG_ID:8, OPERATION:'full_sync',           RESOURCE_ID:'list-004', ITEMS_FOUND:20,ITEMS_CREATED:20,ITEMS_UPDATED:0,ITEMS_DELETED:0,ITEMS_FAILED:0,DIRECTION:'SP_TO_ORACLE',DURATION_MS:1,  DELTA_TOKEN:'4e2b8c7d...', STARTED_AT:'2026-05-04T03:16:27'},
+  {LOG_ID:7, OPERATION:'full_sync',           RESOURCE_ID:'list-003', ITEMS_FOUND:20,ITEMS_CREATED:20,ITEMS_UPDATED:0,ITEMS_DELETED:0,ITEMS_FAILED:0,DIRECTION:'SP_TO_ORACLE',DURATION_MS:2,  DELTA_TOKEN:'feeb7d24...', STARTED_AT:'2026-05-04T03:16:27'},
+  {LOG_ID:6, OPERATION:'full_sync',           RESOURCE_ID:'list-002', ITEMS_FOUND:23,ITEMS_CREATED:23,ITEMS_UPDATED:0,ITEMS_DELETED:0,ITEMS_FAILED:0,DIRECTION:'SP_TO_ORACLE',DURATION_MS:1,  DELTA_TOKEN:'c217ef5b...', STARTED_AT:'2026-05-04T03:16:27'},
+  {LOG_ID:5, OPERATION:'full_sync',           RESOURCE_ID:'list-001', ITEMS_FOUND:20,ITEMS_CREATED:20,ITEMS_UPDATED:0,ITEMS_DELETED:0,ITEMS_FAILED:0,DIRECTION:'SP_TO_ORACLE',DURATION_MS:1,  DELTA_TOKEN:'ec5dfd4c...', STARTED_AT:'2026-05-04T03:16:27'},
+  {LOG_ID:4, OPERATION:'delta_sync',          RESOURCE_ID:'list-003', ITEMS_FOUND:1, ITEMS_CREATED:0,ITEMS_UPDATED:1, ITEMS_DELETED:0,ITEMS_FAILED:0,DIRECTION:'SP_TO_ORACLE',DURATION_MS:1,  DELTA_TOKEN:'feeb7d24...', STARTED_AT:'2026-05-04T02:44:10'},
+  {LOG_ID:3, OPERATION:'delta_sync',          RESOURCE_ID:'list-002', ITEMS_FOUND:3, ITEMS_CREATED:0,ITEMS_UPDATED:3, ITEMS_DELETED:0,ITEMS_FAILED:0,DIRECTION:'SP_TO_ORACLE',DURATION_MS:0,  DELTA_TOKEN:'c217ef5b...', STARTED_AT:'2026-05-04T02:44:10'},
+  {LOG_ID:2, OPERATION:'delta_sync',          RESOURCE_ID:'list-001', ITEMS_FOUND:5, ITEMS_CREATED:0,ITEMS_UPDATED:5, ITEMS_DELETED:0,ITEMS_FAILED:0,DIRECTION:'SP_TO_ORACLE',DURATION_MS:0,  DELTA_TOKEN:'ec5dfd4c...', STARTED_AT:'2026-05-04T02:44:10'},
+  {LOG_ID:1, OPERATION:'oracle_to_sp_push',   RESOURCE_ID:'all',      ITEMS_FOUND:1,ITEMS_CREATED:1,ITEMS_UPDATED:0, ITEMS_DELETED:0,ITEMS_FAILED:0,DIRECTION:'ORACLE_TO_SP', DURATION_MS:1,  DELTA_TOKEN:null,          STARTED_AT:'2026-05-04T02:10:05'},
+];
+
+const WEBHOOKS = [
+  {id:'96753380a289',resource:'/site-001/lists/list-001/items',expires:'2026-06-02'},
+  {id:'28da93eb4d89',resource:'/site-001/lists/list-002/items',expires:'2026-06-02'},
+  {id:'45222206e0ee',resource:'/site-001/lists/list-003/items',expires:'2026-06-02'},
+];
+
+let pendingCount = 0;
+let allItems = [...ITEMS];
+let allDocs  = [...DOCS];
+
+// ── Init ──────────────────────────────────────────────────────
+function init() {
+  renderSidebar();
+  renderOverview();
+  renderItems();
+  renderDocs();
+  renderSyncLog();
+}
+
+function renderSidebar() {
+  document.getElementById('site-list').innerHTML = SITES.map(s => `
+    <div class="site-item" onclick="showPage('items')">
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.DISPLAY_NAME}</span>
+      <span class="site-chip">${LISTS.filter(l=>l.SITE_ID===s.SITE_ID).length}L</span>
+    </div>`).join('');
+}
+
+function renderOverview() {
+  // Flow
+  const spToOra = SYNC_LOG.filter(r=>r.DIRECTION==='SP_TO_ORACLE').length;
+  const oraToSp = SYNC_LOG.filter(r=>r.DIRECTION==='ORACLE_TO_SP').length;
+  document.getElementById('flow-list').innerHTML = `
+    <div class="flow"><span class="flow-dir flow-sp">SP</span><span class="flow-arrow">→</span><span class="flow-dir flow-ora">ORA</span><span class="flow-meta">Delta + full sync</span><span class="flow-count">${spToOra} runs</span></div>
+    <div class="flow"><span class="flow-dir flow-ora">ORA</span><span class="flow-arrow">→</span><span class="flow-dir flow-sp">SP</span><span class="flow-meta">PUSH_PENDING queue</span><span class="flow-count">${oraToSp} runs</span></div>`;
+
+  // List bars
+  const maxCount = Math.max(...LISTS.map(l=>l.ITEM_COUNT));
+  document.getElementById('list-bars').innerHTML = LISTS.slice(0,8).map(l => {
+    const pct = Math.round(l.ITEM_COUNT/maxCount*100);
+    const color = l.LIST_TYPE==='documentLibrary'?'var(--blue)':'var(--green)';
+    return `<div class="bar-row">
+      <div class="bar-lbl">${l.DISPLAY_NAME}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${color}"></div></div>
+      <div class="bar-val">${l.ITEM_COUNT}</div>
+    </div>`;
+  }).join('');
+
+  // Log
+  document.getElementById('ov-log-body').innerHTML = SYNC_LOG.slice(0,6).map(r => {
+    const dirBadge = r.DIRECTION==='SP_TO_ORACLE'
+      ? '<span class="badge badge-ms">SP→ORA</span>'
+      : '<span class="badge badge-ora">ORA→SP</span>';
+    return `<tr>
+      <td>${r.OPERATION}</td>
+      <td style="color:var(--green)">${r.RESOURCE_ID}</td>
+      <td style="color:var(--green3)">${r.ITEMS_CREATED}</td>
+      <td style="color:var(--amber)">${r.ITEMS_UPDATED}</td>
+      <td>${dirBadge}</td>
+      <td style="color:var(--muted)">${r.DURATION_MS}</td>
+    </tr>`;
+  }).join('');
+
+  // Sites storage
+  document.getElementById('sites-storage').innerHTML = SITES.map(s => {
+    const gb  = (s.STORAGE_USED/1e9).toFixed(1);
+    const pct = Math.round(s.STORAGE_USED/2e9*100);
+    return `<div class="bar-row">
+      <div class="bar-lbl">${s.DISPLAY_NAME}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:var(--ms)"></div></div>
+      <div class="bar-val">${gb}GB</div>
+    </div>`;
+  }).join('');
+}
+
+function renderItems() {
+  const search = (document.getElementById('item-search')?.value||'').toLowerCase();
+  const status = document.getElementById('item-status')?.value||'';
+  let filtered = allItems;
+  if (search) filtered = filtered.filter(i => (i.TITLE+i.STATUS+i.PRIORITY+i.ASSIGNED_TO).toLowerCase().includes(search));
+  if (status) filtered = filtered.filter(i => i.STATUS===status);
+  document.getElementById('item-count').textContent = `${filtered.length} items`;
+  document.getElementById('item-body').innerHTML = filtered.slice(0,50).map(i => {
+    const sb = i.STATUS==='Approved'||i.STATUS==='Complete' ? 'badge-ok' :
+               i.STATUS==='InProgress' ? 'badge-warn' : '';
+    const pb = i.PRIORITY==='Critical' ? 'badge-err' : i.PRIORITY==='High' ? 'badge-warn' : '';
+    const pp = i.PUSH_PENDING ? '<span class="badge badge-pend">PENDING</span>' : '—';
+    return `<tr>
+      <td style="color:var(--muted);font-size:10px">${i.ITEM_ID}</td>
+      <td style="color:var(--green);font-size:10px">${i.LIST_NAME}</td>
+      <td>${i.TITLE}</td>
+      <td><span class="badge ${sb}">${i.STATUS}</span></td>
+      <td><span class="badge ${pb}">${i.PRIORITY}</span></td>
+      <td style="color:var(--muted)">${i.ASSIGNED_TO}</td>
+      <td>${pp}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderDocs() {
+  const search = (document.getElementById('doc-search')?.value||'').toLowerCase();
+  let filtered = allDocs;
+  if (search) filtered = filtered.filter(d =>
+    d.FILE_NAME.toLowerCase().includes(search) ||
+    (d.EXTRACTED_TEXT||'').toLowerCase().includes(search)
+  );
+  document.getElementById('doc-count').textContent = `${filtered.length} documents`;
+  document.getElementById('doc-body').innerHTML = filtered.map(d => {
+    const kb      = Math.round(d.FILE_SIZE/1024);
+    const snippet = search && d.EXTRACTED_TEXT
+      ? highlightSnippet(d.EXTRACTED_TEXT, search)
+      : (d.EXTRACTED_TEXT||'').substring(0,60)+'...';
+    const typeBadge = d.FILE_TYPE==='pdf' ? 'badge-err' : 'badge-ms';
+    return `<tr>
+      <td style="color:var(--green3)">${d.FILE_NAME}</td>
+      <td><span class="badge ${typeBadge}">${d.FILE_TYPE.toUpperCase()}</span></td>
+      <td style="color:var(--muted)">${kb}KB</td>
+      <td style="color:var(--muted)">${d.PAGE_COUNT}</td>
+      <td style="color:var(--muted);font-size:10px;max-width:300px">${snippet}</td>
+      <td style="color:var(--muted)">${d.SP_CREATED_BY}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderSyncLog() {
+  document.getElementById('sync-log-body').innerHTML = SYNC_LOG.map(r => {
+    const dir = r.DIRECTION==='SP_TO_ORACLE'
+      ? '<span class="badge badge-ms">SP→ORA</span>'
+      : '<span class="badge badge-ora">ORA→SP</span>';
+    return `<tr>
+      <td style="color:var(--muted)">${r.LOG_ID}</td>
+      <td style="color:var(--green)">${r.OPERATION}</td>
+      <td style="color:var(--muted)">${r.RESOURCE_ID}</td>
+      <td>${r.ITEMS_FOUND}</td>
+      <td style="color:var(--green3)">${r.ITEMS_CREATED}</td>
+      <td style="color:var(--amber)">${r.ITEMS_UPDATED}</td>
+      <td style="color:var(--red)">${r.ITEMS_DELETED}</td>
+      <td style="color:${r.ITEMS_FAILED>0?'var(--red)':'var(--muted)'}">${r.ITEMS_FAILED}</td>
+      <td style="color:var(--muted);font-size:10px">${r.DIRECTION==='SP_TO_ORACLE'?r.DELTA_TOKEN||'—':'—'}</td>
+      <td>${dir}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('full-log-body').innerHTML = SYNC_LOG.map(r => {
+    const dir = r.DIRECTION==='SP_TO_ORACLE'
+      ? '<span class="badge badge-ms">SP→ORA</span>'
+      : '<span class="badge badge-ora">ORA→SP</span>';
+    const ts  = r.STARTED_AT.replace('T',' ').substring(0,19);
+    return `<tr>
+      <td style="color:var(--muted)">${r.LOG_ID}</td>
+      <td style="color:var(--hint);font-size:10px">${ts}</td>
+      <td style="color:var(--green)">${r.OPERATION}</td>
+      <td>${r.RESOURCE_ID}</td>
+      <td style="color:var(--green3)">${r.ITEMS_CREATED}</td>
+      <td style="color:var(--amber)">${r.ITEMS_UPDATED}</td>
+      <td style="color:var(--red)">${r.ITEMS_DELETED}</td>
+      <td>${r.ITEMS_FAILED}</td>
+      <td style="color:var(--muted);font-size:10px">${r.DELTA_TOKEN||'—'}</td>
+      <td>${dir}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('webhook-list').innerHTML = WEBHOOKS.map(w => `
+    <div class="wh-item">
+      <span class="wh-id">${w.id}...</span>
+      <span class="wh-res">${w.resource}</span>
+      <span class="badge badge-ok">ACTIVE</span>
+      <span class="wh-exp">exp ${w.expires}</span>
+    </div>`).join('');
+}
+
+function highlightSnippet(text, query) {
+  const idx = text.toLowerCase().indexOf(query);
+  if (idx === -1) return text.substring(0,60)+'...';
+  const start = Math.max(0, idx-30);
+  const end   = Math.min(text.length, idx+query.length+30);
+  const snippet = text.substring(start,end);
+  return snippet.replace(new RegExp(query,'gi'), m => `<span style="color:var(--green3);background:rgba(34,197,94,0.12)">${m}</span>`);
+}
+
+// ── Actions ───────────────────────────────────────────────────
+function doSync(siteId, full) {
+  const log = {
+    LOG_ID: SYNC_LOG.length+1,
+    OPERATION: full?'full_sync':'delta_sync',
+    RESOURCE_ID: siteId,
+    ITEMS_FOUND: full ? 63 : 7,
+    ITEMS_CREATED: full ? 63 : 0,
+    ITEMS_UPDATED: full ? 0 : 7,
+    ITEMS_DELETED: 0, ITEMS_FAILED: 0,
+    DIRECTION: 'SP_TO_ORACLE',
+    DURATION_MS: full ? 12 : 3,
+    DELTA_TOKEN: 'new_token_...',
+    STARTED_AT: new Date().toISOString(),
+  };
+  SYNC_LOG.unshift(log);
+  document.getElementById('ov-runs').textContent = SYNC_LOG.length;
+  renderSyncLog();
+  renderOverview();
+  alert(`✓ ${full?'Full':'Delta'} sync triggered for ${siteId}\n${log.ITEMS_FOUND} items processed`);
+}
+
+function doPush() {
+  const pending = allItems.filter(i=>i.PUSH_PENDING===1);
+  if (pending.length === 0) {
+    const fakeItem = allItems[Math.floor(Math.random()*allItems.length)];
+    fakeItem.PUSH_PENDING = 1;
+    pendingCount++;
+    document.getElementById('tb-pending').textContent = pendingCount;
+    document.getElementById('ov-pending').textContent = pendingCount;
+    renderItems();
+    alert(`✓ Item queued for push to SharePoint\nPOST /sync/oracle-to-sp to execute`);
+  } else {
+    pending.forEach(i => { i.PUSH_PENDING = 0; });
+    const log = {
+      LOG_ID: SYNC_LOG.length+1, OPERATION:'oracle_to_sp_push',
+      RESOURCE_ID:'all', ITEMS_FOUND:pending.length, ITEMS_CREATED:pending.length,
+      ITEMS_UPDATED:0, ITEMS_DELETED:0, ITEMS_FAILED:0,
+      DIRECTION:'ORACLE_TO_SP', DURATION_MS:2, DELTA_TOKEN:null,
+      STARTED_AT:new Date().toISOString(),
+    };
+    SYNC_LOG.unshift(log);
+    pendingCount = 0;
+    document.getElementById('tb-pending').textContent = 0;
+    document.getElementById('ov-pending').textContent = 0;
+    renderItems();
+    renderSyncLog();
+    renderOverview();
+    alert(`✓ Pushed ${pending.length} item(s) to SharePoint`);
+  }
+}
+
+function filterItems() { renderItems(); }
+function filterDocs()  { renderDocs(); }
+
+// ── Navigation ────────────────────────────────────────────────
+function showPage(id) {
+  document.querySelectorAll('.page').forEach(p => p.style.display = 'none');
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById(`page-${id}`).style.display = 'block';
+  document.querySelector(`[onclick="showPage('${id}')"]`)?.classList.add('active');
+}
+
+init();
+</script>
+</body>
+</html>
